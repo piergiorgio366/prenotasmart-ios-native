@@ -1,0 +1,64 @@
+workflows:
+  ios-unsigned:
+    name: PrenotaSmart iOS - IPA non firmata
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      xcode: latest
+    scripts:
+      - name: Estrai progetto Xcode
+        script: unzip -qo PrenotaSmart-source.zip -d .
+      - name: Verifica progetto Xcode
+        script: |
+          xcodebuild -list -project PrenotaSmart.xcodeproj
+      - name: Compila archivio senza firma
+        script: |
+          set -e
+          rm -rf build
+          mkdir -p build
+          xcodebuild archive \
+            -project PrenotaSmart.xcodeproj \
+            -scheme PrenotaSmart \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -archivePath "$CM_BUILD_DIR/build/PrenotaSmart.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+      - name: Crea IPA non firmata
+        script: |
+          set -e
+          mkdir -p "$CM_BUILD_DIR/build/Payload"
+          cp -R "$CM_BUILD_DIR/build/PrenotaSmart.xcarchive/Products/Applications/PrenotaSmart.app" \
+            "$CM_BUILD_DIR/build/Payload/"
+          cd "$CM_BUILD_DIR/build"
+          zip -qry PrenotaSmart-unsigned.ipa Payload
+    artifacts:
+      - build/PrenotaSmart-unsigned.ipa
+      - build/PrenotaSmart.xcarchive
+
+  ios-signed:
+    name: PrenotaSmart iOS - IPA firmata
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: codemagic
+    environment:
+      xcode: latest
+      ios_signing:
+        distribution_type: development
+        bundle_identifier: app.prenotasmart.ios
+    scripts:
+      - name: Estrai progetto Xcode
+        script: unzip -qo PrenotaSmart-source.zip -d .
+      - name: Installa certificato e provisioning profile
+        script: xcode-project use-profiles
+      - name: Compila IPA firmata
+        script: |
+          xcode-project build-ipa \
+            --project PrenotaSmart.xcodeproj \
+            --scheme PrenotaSmart
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
